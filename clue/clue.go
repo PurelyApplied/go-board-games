@@ -1,13 +1,21 @@
 package clue
 
 import (
+	"go-board-games/clue/items"
 	"log"
 	"math/rand"
 	"time"
 )
 
-type rumorMsg interface{}
-type accuseMsg interface{}
+type jaccuse struct {
+	items.Suspect
+	items.Weapon
+	items.Location
+}
+
+type rumorMsg jaccuse
+type accuseMsg jaccuse
+
 type moveMsg interface{}
 type endTurnMsg interface{}
 type startTurnMsg interface{}
@@ -36,32 +44,66 @@ func Clue(nPlayers int) {
 		c = append(c, newPlayerComm())
 	}
 
+	itemSet := items.NewItemSet(6, 6, 10, time.Now().UnixNano())
+	s, w, l := itemSet.Suspects[0], itemSet.Weapons[0], itemSet.Locations[0]
+	actual := jaccuse{s, w, l}
+
+	// TODO deal cards (minus actual)
+	// TODO public knowledge when it doesn't deal cleanly
 	for id := 0; id < nPlayers; id++ {
-		go play(id, c)
+		go play(id, c, itemSet)
 	}
 
-	main(nPlayers, c)
+	coordinate(nPlayers, c, actual)
 }
 
-func main(nPlayers int, c []playerComm) {
-	for currentPlayer := rand.Intn(nPlayers); ; currentPlayer = (currentPlayer + 1) % nPlayers {
-		c[currentPlayer].startTurn <- "start"
-		<-c[currentPlayer].endTurn
+func coordinate(nPlayers int, c []playerComm, actual jaccuse) {
+	currentPlayer := rand.Intn(nPlayers)
+	c[currentPlayer].startTurn <- "start"
+	gameOver := false
+	for !gameOver {
+		select {
+		case <-c[currentPlayer].endTurn:
+			log.Printf("Player %d ending turn.\n", currentPlayer)
+			currentPlayer = (currentPlayer + 1) % nPlayers
 
-		time.Sleep(500 * time.Millisecond)
+			log.Printf("Signaling player %d to start their turn.\n", currentPlayer)
+			c[currentPlayer].startTurn <- "start"
+
+		case r := <-c[currentPlayer].rumor:
+			log.Printf("Player %d spreads a rumor: %v\n", currentPlayer, r)
+			log.Printf("(Actual is: %v\n", actual)
+
+			if jaccuse(r) == actual {
+				log.Printf("Player %d rumored correctly!  Ending game.\n", currentPlayer)
+				gameOver = true
+			}
+		}
 	}
 }
 
-func play(id int, c []playerComm) {
+func play(id int, c []playerComm, itemSet items.ItemSet) {
 	for {
 		select {
 		case <-c[id].startTurn:
-			log.Println("Player", id, "takes their turn...")
+			// TODO moving to rooms
+			g := guessRandomly(itemSet)
+			c[id].rumor <- rumorMsg(g)
+			// TODO get responses
 			c[id].endTurn <- "end"
 		}
 	}
 }
 
+func guessRandomly(set items.ItemSet) jaccuse {
+	return jaccuse{
+		Suspect:  set.Suspects[rand.Intn(len(set.Suspects))],
+		Weapon:   set.Weapons[rand.Intn(len(set.Weapons))],
+		Location: set.Locations[rand.Intn(len(set.Locations))],
+	}
+}
+
+// TODO Future snippets:
 type guessTactic string
 type retention string
 

@@ -95,17 +95,23 @@ var locations = []item{
 	Location("sense of self"),
 }
 
-func ClassicItemSets() ([]Suspect, []Weapon, []Location) {
+type ItemSet struct {
+	Suspects  []Suspect
+	Weapons   []Weapon
+	Locations []Location
+}
+
+func ClassicItemSets() ItemSet {
 	s := append([]Suspect{}, toS(toI(weapons[:6]))...)
 	w := append([]Weapon{}, toW(toI(weapons[:6]))...)
 	l := append([]Location{}, toL(toI(weapons[:10]))...)
-	return s, w, l
+	return ItemSet{s, w, l}
 
 }
-func NewItemSets(s, w, l int, seed int64) ([]Suspect, []Weapon, []Location) {
-	// func NewItemSets(w, l, s int, seed int64)
+func NewItemSet(s, w, l int, seed int64) ItemSet {
+	// func NewItemSet(w, l, s int, seed int64)
 	rand.Seed(seed)
-	return toS(choose(s, toI(suspects))), toW(choose(w, toI(weapons))), toL(choose(l, toI(locations)))
+	return ItemSet{toS(choose(s, toI(suspects))), toW(choose(w, toI(weapons))), toL(choose(l, toI(locations)))}
 }
 
 // SooOOoo reusable!
