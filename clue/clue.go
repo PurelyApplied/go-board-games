@@ -7,14 +7,8 @@ import (
 	"time"
 )
 
-type jaccuse struct {
-	items.Suspect
-	items.Weapon
-	items.Location
-}
-
-type rumorMsg jaccuse
-type accuseMsg jaccuse
+type rumorMsg items.Jaccuse
+type accuseMsg items.Jaccuse
 
 type moveMsg interface{}
 type endTurnMsg interface{}
@@ -45,8 +39,7 @@ func Clue(nPlayers int) {
 	}
 
 	itemSet := items.NewItemSet(6, 6, 10, time.Now().UnixNano())
-	s, w, l := itemSet.Suspects[0], itemSet.Weapons[0], itemSet.Locations[0]
-	actual := jaccuse{s, w, l}
+	actual, _ := itemSet.Setup()
 
 	// TODO deal cards (minus actual)
 	// TODO public knowledge when it doesn't deal cleanly
@@ -57,7 +50,7 @@ func Clue(nPlayers int) {
 	coordinate(nPlayers, c, actual)
 }
 
-func coordinate(nPlayers int, c []playerComm, actual jaccuse) {
+func coordinate(nPlayers int, c []playerComm, actual items.Jaccuse) {
 	currentPlayer := rand.Intn(nPlayers)
 	c[currentPlayer].startTurn <- "start"
 	gameOver := false
@@ -74,7 +67,7 @@ func coordinate(nPlayers int, c []playerComm, actual jaccuse) {
 			log.Printf("Player %d spreads a rumor: %v\n", currentPlayer, r)
 			log.Printf("(Actual is: %v\n", actual)
 
-			if jaccuse(r) == actual {
+			if items.Jaccuse(r) == actual {
 				log.Printf("Player %d rumored correctly!  Ending game.\n", currentPlayer)
 				gameOver = true
 			}
@@ -95,8 +88,8 @@ func play(id int, c []playerComm, itemSet items.ItemSet) {
 	}
 }
 
-func guessRandomly(set items.ItemSet) jaccuse {
-	return jaccuse{
+func guessRandomly(set items.ItemSet) items.Jaccuse {
+	return items.Jaccuse{
 		Suspect:  set.Suspects[rand.Intn(len(set.Suspects))],
 		Weapon:   set.Weapons[rand.Intn(len(set.Weapons))],
 		Location: set.Locations[rand.Intn(len(set.Locations))],
