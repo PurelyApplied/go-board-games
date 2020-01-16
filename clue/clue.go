@@ -15,36 +15,50 @@ type endTurnMsg interface{}
 type startTurnMsg interface{}
 
 type playerComm struct {
-	rumor     chan rumorMsg
-	accuse    chan accuseMsg
-	move      chan moveMsg
-	endTurn   chan endTurnMsg
-	startTurn chan startTurnMsg
+	rumor       chan rumorMsg
+	accuse      chan accuseMsg
+	move        chan moveMsg
+	startTurn   chan startTurnMsg
+	endTurn     chan endTurnMsg
+	beDealtItem chan items.Item
+	beShownItem chan items.Item
 }
 
 func newPlayerComm() playerComm {
 	return playerComm{
-		rumor:     make(chan rumorMsg),
-		accuse:    make(chan accuseMsg),
-		move:      make(chan moveMsg),
-		startTurn: make(chan startTurnMsg),
-		endTurn:   make(chan endTurnMsg),
+		rumor:       make(chan rumorMsg),
+		accuse:      make(chan accuseMsg),
+		move:        make(chan moveMsg),
+		startTurn:   make(chan startTurnMsg),
+		endTurn:     make(chan endTurnMsg),
+		beDealtItem: make(chan items.Item),
+		beShownItem: make(chan items.Item),
 	}
 }
 
 func Clue(nPlayers int) {
-	var c []playerComm
+	c := make([]playerComm, 0, nPlayers)
 	for i := 0; i < nPlayers; i++ {
 		c = append(c, newPlayerComm())
 	}
 
 	itemSet := items.NewItemSet(6, 6, 10, time.Now().UnixNano())
-	actual, _ := itemSet.Setup()
+	actual, deck := itemSet.Setup()
 
-	// TODO deal cards (minus actual)
-	// TODO public knowledge when it doesn't deal cleanly
 	for id := 0; id < nPlayers; id++ {
 		go play(id, c, itemSet)
+	}
+
+	// A deck of size N divides among p players N // p times, up to (N // p) * p.  Deal cards.
+	for i := 0; i < len(deck)/nPlayers*nPlayers; i++ {
+		c[i%nPlayers].beDealtItem <- deck[i]
+	}
+
+	// everyone gets to see cards that don't deal out evenly
+	for i := len(deck) / nPlayers * nPlayers; i < len(deck); i++ {
+		for j := 0; j < nPlayers; j++ {
+			c[j].beShownItem <- deck[i]
+		}
 	}
 
 	coordinate(nPlayers, c, actual)
@@ -76,14 +90,25 @@ func coordinate(nPlayers int, c []playerComm, actual items.Jaccuse) {
 }
 
 func play(id int, c []playerComm, itemSet items.ItemSet) {
+	var myItems []items.Item
 	for {
 		select {
+		case item := <-c[id].beDealtItem:
+			log.Printf("Player %d is dealt: %v\n", id, item)
+			myItems = append(myItems, item)
+		case item := <-c[id].beShownItem:
+			log.Printf("Player %d is shown: %v\n", id, item)
+			// TODO Think about that.
 		case <-c[id].startTurn:
 			// TODO moving to rooms
 			g := guessRandomly(itemSet)
 			c[id].rumor <- rumorMsg(g)
 			// TODO get responses
 			c[id].endTurn <- "end"
+
+		default:
+			log.Printf("Player %d snoozes...\n", id)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
