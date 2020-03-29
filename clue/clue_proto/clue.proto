@@ -1,0 +1,14 @@
+syntax = "proto3";
+package clue_proto;
+
+// Rumor or accusation
+message Suspicion {
+    string person = 1;
+    string weapon = 2;
+    string location = 3;
+}
+
+message RumorResponse {
+    bool canRefute = 1;
+    string refutation = 2;
+}
