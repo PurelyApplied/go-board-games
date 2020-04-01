@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,51 +16,13 @@ type clanCard struct {
 	clan string // "suit"
 }
 
-type copyable interface {
-	copy() copyable
+type clanDeck struct {
+	cards []clanCard
+	lock  sync.Mutex
 }
 
-type querable struct {
-	value   copyable
-	request chan struct{}
-	respond chan interface{}
-}
-
-func (q *querable) makeChans() {
-	q.request = make(chan struct{})
-	q.respond = make(chan interface{})
-}
-
-func (q querable) listen() {
-	for {
-		select {
-		case <-q.request:
-			q.respond <- q.value.copy()
-		}
-	}
-}
-
-type clanDeck querable
-
-type clanCardSlice []clanCard
-
-func (ccs clanCardSlice) copy() copyable {
-	var cpy clanCardSlice
-	copy(cpy, ccs)
-	return cpy
-}
-
-func newClanDeck() clanDeck {
-
-	deck := clanDeck{
-		value:   nil,
-		request: make(chan struct{}),
-		respond: make(chan interface{}),
-	}
-
-	defer func() { go deck.listen() }()
-
-	var cards clanCardSlice
+func newClanDeck() *clanDeck {
+	var cards []clanCard
 	for _, c := range clans {
 		for r := 1; r <= 9; r++ {
 			cards = append(cards, clanCard{
@@ -69,91 +32,77 @@ func newClanDeck() clanDeck {
 		}
 	}
 
-	deck.value = cards
-	return deck
+	return &clanDeck{
+		cards: cards,
+		lock:  sync.Mutex{},
+	}
 }
 
 func (cd *clanDeck) shuffle() {
-	cards := cd.value.(clanCardSlice)
-	rand.Shuffle(len(cards), func(i, j int) {
-		cards[i], cards[j] = cards[j], cards[i]
+	cd.lock.Lock()
+	defer cd.lock.Unlock()
+
+	rand.Shuffle(len(cd.cards), func(i, j int) {
+		cd.cards[i], cd.cards[j] = cd.cards[j], cd.cards[i]
 	})
 }
 
-func (cd *clanDeck) draw() clanCard {
-	cd.request <- struct{}{}
-	return (<-cd.respond).(clanCard)
-}
+func (cd *clanDeck) draw() (draw clanCard, ok bool) {
+	cd.lock.Lock()
+	defer cd.lock.Unlock()
 
-// deck listens for draws
-func (cd *clanDeck) listen() {
-	for {
-		select {
-		case <-cd.request:
-			deck := cd.value.(clanCardSlice)
-			draw, deck := deck[len(deck)-1], deck[:len(deck)-1]
-			cd.value = deck
-			cd.respond <- draw
-		}
+	if len(cd.cards) == 0 {
+		return clanCard{}, false
 	}
 
+	log.Printf("Drawing from a deck with %d cards left...\n", len(cd.cards))
+	draw, cd.cards = cd.cards[len(cd.cards)-1], cd.cards[:len(cd.cards)-1]
+	return draw, true
 }
 
 type cardSet []clanCard
 
-type stone [2]cardSet
-
-func (s stone) display() string {
-	left, right := fmt.Sprintf("%v", s[0]), fmt.Sprintf("%v", s[1])
-
+func displayStone(set [2]cardSet) string {
+	left, right := fmt.Sprintf("%v", set[0]), fmt.Sprintf("%v", set[1])
 	return fmt.Sprintf("%60v | %-60v", left, right)
 }
 
 type battleLine struct {
-	line     [9]stone
-	reqChan  lineChan
-	respChan chan [9]stone
+	line [][2]cardSet
+	lock sync.Mutex
 }
 
-func (l battleLine) display() string {
+func (l *battleLine) display() string {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+
 	var stones []string
 	for _, s := range l.line {
-		stones = append(stones, s.display())
+		stones = append(stones, displayStone(s))
 	}
 	return "Battle line:\n------------\n" + strings.Join(stones, "\n")
 }
 
-func (l battleLine) get() [9]stone {
-	l.reqChan <- ""
-	return <-l.respChan
-}
+func (l *battleLine) get() [][2]cardSet {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
-func (l battleLine) listen() {
-	for {
-		select {
-		case <-l.reqChan:
-			l.respChan <- l.copy()
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-}
-
-func (l battleLine) copy() [9]stone {
-	cpy := [9]stone{}
-	for i := 0; i < 9; i++ {
-		cpy[i] = l.line[i]
-	}
+	var cpy [][2]cardSet
+	copy(cpy, l.line)
 	return cpy
+}
+
+func (l *battleLine) appendTo(i, side int, c clanCard) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.line[i][side] = append(l.line[i][side], c)
 }
 
 func newBattleline() *battleLine {
 	line := battleLine{
-		line:     [9]stone{},
-		reqChan:  make(lineChan),
-		respChan: make(chan [9]stone),
+		line: make([][2]cardSet, 9, 9),
+		lock: sync.Mutex{},
 	}
-	go line.listen()
 	return &line
 }
 
@@ -165,24 +114,31 @@ type playCard struct {
 	loc  int
 }
 
-func player(id int, chans chanGroup, deck clanDeck, line *battleLine) {
+func player(id int, chans chanGroup, deck *clanDeck, line *battleLine) {
 	var hand []clanCard
 	for {
 		select {
 		case in := <-chans.toPlayer:
 			switch in.(type) {
 			case playerInstructionDrawCard:
-				draw := deck.draw()
-				log.Printf("Player %d draws %v\n", id, draw)
-				hand = append(hand, draw)
+				draw, ok := deck.draw()
+				if !ok {
+					log.Printf("No cards for Player %d to draw!\n", id)
+				} else {
+					log.Printf("Player %d draws %v\n", id, draw)
+					hand = append(hand, draw)
+				}
 			case playerInstructionBeginTurn:
 				log.Printf("Player %d to play...\n", id)
-				_ = line
+				if len(hand) == 0 {
+					log.Printf("Player %d has no cards to play!!\n", id)
+					break
+				}
+
 				// randomly select a card and a destination
 				i := rand.Intn(len(hand))
 				loc := rand.Intn(9)
 				card := hand[i]
-				// TODO probably out of bounds?
 				hand = append(hand[:i], hand[i+1:]...)
 				toPlay := playCard{card, loc}
 				log.Printf("Player %d to play: %v\n", id, toPlay)
@@ -234,7 +190,7 @@ type historicMove struct {
 	card clanCard
 }
 
-func officiateGame(deck clanDeck, line *battleLine, chans []chanGroup) {
+func officiateGame(deck *clanDeck, line *battleLine, chans []chanGroup) {
 	log.Print("Begin!")
 	for i := 0; i < 6; i++ {
 		chans[0].toPlayer <- playerInstructionDrawCard{}
@@ -254,9 +210,7 @@ func officiateGame(deck clanDeck, line *battleLine, chans []chanGroup) {
 					// Add card to history
 					history = append(history, historicMove{id, instr.card})
 
-					// Set card to stone
-					stoneSet := line.line[instr.loc][id]
-					line.line[instr.loc][id] = append(stoneSet, instr.card)
+					line.appendTo(instr.loc, id, instr.card)
 
 					// instruct to draw
 					chans[id].toPlayer <- playerInstructionDrawCard{}
