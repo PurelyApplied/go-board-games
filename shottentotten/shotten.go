@@ -87,7 +87,7 @@ func (l *battleLine) get() [][2]cardSet {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
-	var cpy [][2]cardSet
+	cpy := make([][2]cardSet, 9, 9)
 	copy(cpy, l.line)
 	return cpy
 }
@@ -136,8 +136,19 @@ func player(id int, chans chanGroup, deck *clanDeck, line *battleLine) {
 				}
 
 				// randomly select a card and a destination
+				linedata := line.get()
+				var openings []int
+				for i, stone := range linedata {
+					side := stone[id]
+					if len(side) < 3 {
+						openings = append(openings, i)
+					}
+				}
+
+				iLoc := rand.Intn(len(openings))
+				loc := openings[iLoc]
+
 				i := rand.Intn(len(hand))
-				loc := rand.Intn(9)
 				card := hand[i]
 				hand = append(hand[:i], hand[i+1:]...)
 				toPlay := playCard{card, loc}
