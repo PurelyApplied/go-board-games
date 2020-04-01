@@ -16,6 +16,10 @@ type clanCard struct {
 	clan string // "suit"
 }
 
+func (c clanCard) String() string {
+	return fmt.Sprintf("%d%s", c.rank, c.clan)
+}
+
 type clanDeck struct {
 	cards []clanCard
 	lock  sync.Mutex
