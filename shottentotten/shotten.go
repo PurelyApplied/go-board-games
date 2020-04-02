@@ -2,8 +2,10 @@ package shottentotten
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"math/rand"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -64,16 +66,29 @@ func (cd *clanDeck) draw() (draw clanCard, ok bool) {
 	return draw, true
 }
 
+func (cd *clanDeck) size() int {
+	cd.lock.Lock()
+	defer cd.lock.Unlock()
+
+	return len(cd.cards)
+}
+
 type cardSet []clanCard
 
 func displayStone(set [2]cardSet) string {
 	left, right := fmt.Sprintf("%v", set[0]), fmt.Sprintf("%v", set[1])
-	return fmt.Sprintf("%60v | %-60v", left, right)
+	return fmt.Sprintf("%15v | %-15v", left, right)
 }
 
 type battleLine struct {
 	line [][2]cardSet
 	lock sync.Mutex
+}
+
+func (l *battleLine) String() string {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return fmt.Sprintf("%v", l.line)
 }
 
 func (l *battleLine) display() string {
@@ -206,6 +221,7 @@ type historicMove struct {
 }
 
 func officiateGame(deck *clanDeck, line *battleLine, chans []chanGroup) {
+	go server(deck, line)
 	log.Print("Begin!")
 	for i := 0; i < 6; i++ {
 		chans[0].toPlayer <- playerInstructionDrawCard{}
@@ -240,11 +256,29 @@ func officiateGame(deck *clanDeck, line *battleLine, chans []chanGroup) {
 				}
 
 			default:
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				fmt.Println(line.display())
 			}
 		}
 	}
 
 	// TODO officiate
+}
+
+var templates = template.Must(template.ParseFiles("shottentotten/game-view.html"))
+
+func renderTemplate(w http.ResponseWriter, tmpl string, line *battleLine) {
+	err := templates.ExecuteTemplate(w, tmpl+".html", struct{ Display string }{line.display()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func server(deck *clanDeck, line *battleLine) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "game-view", line)
+	}
+
+	http.HandleFunc("/", handler)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
