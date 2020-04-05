@@ -13,69 +13,8 @@ import (
 
 const updateInterval = 10 * time.Millisecond
 
-var clans = []string{"a", "b", "c", "d", "e", "f"}
-
-type clanCard struct {
-	rank int
-	clan string // "suit"
-}
-
-func (c clanCard) String() string {
-	return fmt.Sprintf("%d%s", c.rank, c.clan)
-}
-
-type clanDeck struct {
-	cards []clanCard
-	sync.RWMutex
-}
-
-func newClanDeck() *clanDeck {
-	var cards []clanCard
-	for _, c := range clans {
-		for r := 1; r <= 9; r++ {
-			cards = append(cards, clanCard{
-				rank: r,
-				clan: c,
-			})
-		}
-	}
-
-	return &clanDeck{
-		cards: cards,
-	}
-}
-
-func (cd *clanDeck) shuffle() {
-	cd.RWMutex.Lock()
-	defer cd.RWMutex.Unlock()
-
-	rand.Shuffle(len(cd.cards), func(i, j int) {
-		cd.cards[i], cd.cards[j] = cd.cards[j], cd.cards[i]
-	})
-}
-
-func (cd *clanDeck) draw() (draw clanCard, ok bool) {
-	cd.RWMutex.Lock()
-	defer cd.RWMutex.Unlock()
-
-	if len(cd.cards) == 0 {
-		return clanCard{}, false
-	}
-
-	log.Printf("Drawing from a deck with %d cards left...\n", len(cd.cards))
-	draw, cd.cards = cd.cards[len(cd.cards)-1], cd.cards[:len(cd.cards)-1]
-	return draw, true
-}
-
-func (cd *clanDeck) size() int {
-	cd.RWMutex.RLock()
-	defer cd.RWMutex.RUnlock()
-
-	return len(cd.cards)
-}
-
 type cardSet struct {
-	cards []clanCard
+	cards []ClanCard
 	sync.RWMutex
 }
 
@@ -161,7 +100,7 @@ func (s *cardSet) sum() int {
 
 func newCardSet() *cardSet {
 	return &cardSet{
-		cards: make([]clanCard, 0, 3),
+		cards: make([]ClanCard, 0, 3),
 	}
 }
 
@@ -306,7 +245,7 @@ func (l *battleLine) get() []*stone {
 	return cpy
 }
 
-func (l *battleLine) appendTo(i, side int, c clanCard) {
+func (l *battleLine) appendTo(i, side int, c ClanCard) {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
 
@@ -336,18 +275,18 @@ type playerInstructionBeginTurn struct{}
 type playerInstructionDrawCard struct{}
 
 type playCard struct {
-	card clanCard
+	card ClanCard
 	loc  int
 }
 
-func player(id int, chans chanGroup, deck *clanDeck, line *battleLine) {
-	var hand []clanCard
+func player(id int, chans chanGroup, deck *ClanDeck, line *battleLine) {
+	var hand []ClanCard
 	for {
 		select {
 		case in := <-chans.toPlayer:
 			switch in.(type) {
 			case playerInstructionDrawCard:
-				draw, ok := deck.draw()
+				draw, ok := deck.Draw()
 				if !ok {
 					log.Printf("No cards for Player %d to draw!\n", id)
 				} else {
@@ -411,8 +350,7 @@ func newChanGroup(id int) chanGroup {
 func Main(seed int64) {
 	rand.Seed(seed)
 
-	deck := newClanDeck()
-	deck.shuffle()
+	deck := New()
 	line := newBattleline()
 	chans := []chanGroup{newChanGroup(0), newChanGroup(1)}
 
@@ -424,10 +362,10 @@ func Main(seed int64) {
 
 type historicMove struct {
 	id   int
-	card clanCard
+	card ClanCard
 }
 
-func officiateGame(deck *clanDeck, line *battleLine, chans []chanGroup) {
+func officiateGame(deck *ClanDeck, line *battleLine, chans []chanGroup) {
 	go server(deck, line)
 	log.Print("Begin!")
 	for i := 0; i < 6; i++ {
@@ -481,7 +419,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, line *battleLine) {
 	}
 }
 
-func server(deck *clanDeck, line *battleLine) {
+func server(deck *ClanDeck, line *battleLine) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "game-view", line)
 	}
