@@ -74,13 +74,60 @@ func (cd *clanDeck) size() int {
 
 type cardSet []clanCard
 
-func displayStone(set [2]cardSet) string {
-	left, right := fmt.Sprintf("%v", set[0]), fmt.Sprintf("%v", set[1])
-	return fmt.Sprintf("%15v | %-15v", left, right)
+func newCardSet() cardSet {
+	return make([]clanCard, 0, 3)
+}
+
+type winner int
+
+const (
+	tbd   winner = -1
+	left  winner = 0
+	right winner = 1
+)
+
+type stone struct {
+	cards [2]cardSet
+	winner
+	sync.RWMutex
+}
+
+func newStone() *stone {
+	s := &stone{winner: tbd}
+	s.cards[0] = newCardSet()
+	s.cards[1] = newCardSet()
+	return s
+}
+
+func (s *stone) Display() string {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
+	separator := s.getWinnerStr()
+
+	left, right := fmt.Sprintf("%v", s.cards[0]), fmt.Sprintf("%v", s.cards[1])
+	return fmt.Sprintf("%15v%s%-15v", left, separator, right)
+}
+
+func (s *stone) getWinnerStr() interface{} {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
+	switch s.winner {
+	case tbd:
+		return " | "
+	case left:
+		return " | "
+	case right:
+		return " | "
+	default:
+		log.Printf("E] Got unexpected winner at stone.")
+		return "?|?"
+	}
 }
 
 type battleLine struct {
-	line [][2]cardSet
+	line []*stone
 	sync.RWMutex
 }
 
@@ -96,16 +143,16 @@ func (l *battleLine) display() string {
 
 	var stones []string
 	for _, s := range l.line {
-		stones = append(stones, displayStone(s))
+		stones = append(stones, s.Display())
 	}
 	return "Battle line:\n------------\n" + strings.Join(stones, "\n")
 }
 
-func (l *battleLine) get() [][2]cardSet {
+func (l *battleLine) get() []*stone {
 	l.RWMutex.RLock()
 	defer l.RWMutex.RUnlock()
 
-	cpy := make([][2]cardSet, 9, 9)
+	cpy := make([]*stone, 9, 9)
 	copy(cpy, l.line)
 	return cpy
 }
@@ -113,12 +160,16 @@ func (l *battleLine) get() [][2]cardSet {
 func (l *battleLine) appendTo(i, side int, c clanCard) {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
-	l.line[i][side] = append(l.line[i][side], c)
+
+	l.line[i].cards[side] = append(l.line[i].cards[side], c)
 }
 
 func newBattleline() *battleLine {
 	line := battleLine{
-		line: make([][2]cardSet, 9, 9),
+		line: make([]*stone, 9, 9),
+	}
+	for i := 0; i < 9; i++ {
+		line.line[i] = newStone()
 	}
 	return &line
 }
@@ -156,7 +207,7 @@ func player(id int, chans chanGroup, deck *clanDeck, line *battleLine) {
 				linedata := line.get()
 				var openings []int
 				for i, stone := range linedata {
-					side := stone[id]
+					side := stone.cards[id]
 					if len(side) < 3 {
 						openings = append(openings, i)
 					}
