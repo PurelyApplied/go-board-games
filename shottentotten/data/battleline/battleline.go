@@ -151,14 +151,14 @@ func (s *Stone) getWinnerStr() interface{} {
 
 	switch s.winner {
 	case tbd:
-		return " | "
+		return "  |  "
 	case left:
-		return "<| "
+		return " <|  "
 	case right:
-		return " |>"
+		return "  |> "
 	default:
 		log.Printf("E] Got unexpected winner at stone.")
-		return "?|?"
+		return " ?|? "
 	}
 }
 
