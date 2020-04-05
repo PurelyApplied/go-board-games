@@ -2,6 +2,7 @@ package shottentotten
 
 import (
 	"fmt"
+	"go-board-games/shottentotten/data/deck"
 	"html/template"
 	"log"
 	"math/rand"
@@ -14,7 +15,7 @@ import (
 const updateInterval = 10 * time.Millisecond
 
 type cardSet struct {
-	cards []ClanCard
+	cards []deck.ClanCard
 	sync.RWMutex
 }
 
@@ -24,7 +25,7 @@ func (s *cardSet) isFlush() bool {
 
 	colors := make(map[string]bool)
 	for _, c := range s.cards {
-		colors[c.clan] = true
+		colors[c.Clan] = true
 	}
 	return len(colors) == 1
 }
@@ -35,7 +36,7 @@ func (s *cardSet) isRun() bool {
 
 	bins := make([]int, 9, 9)
 	for _, c := range s.cards {
-		bins[c.rank] += 1
+		bins[c.Rank] += 1
 	}
 
 	counter := 0
@@ -62,8 +63,8 @@ func (s *cardSet) highCard() int {
 
 	high := -1
 	for _, v := range s.cards {
-		if v.rank > high {
-			high = v.rank
+		if v.Rank > high {
+			high = v.Rank
 		}
 	}
 
@@ -76,7 +77,7 @@ func (s *cardSet) isTriple() bool {
 
 	bins := make([]int, 9, 9)
 	for _, c := range s.cards {
-		bins[c.rank] += 1
+		bins[c.Rank] += 1
 	}
 
 	for i := 0; i < 9; i++ {
@@ -93,14 +94,14 @@ func (s *cardSet) sum() int {
 
 	total := 0
 	for _, v := range s.cards {
-		total += v.rank
+		total += v.Rank
 	}
 	return total
 }
 
 func newCardSet() *cardSet {
 	return &cardSet{
-		cards: make([]ClanCard, 0, 3),
+		cards: make([]deck.ClanCard, 0, 3),
 	}
 }
 
@@ -245,7 +246,7 @@ func (l *battleLine) get() []*stone {
 	return cpy
 }
 
-func (l *battleLine) appendTo(i, side int, c ClanCard) {
+func (l *battleLine) appendTo(i, side int, c deck.ClanCard) {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
 
@@ -275,18 +276,18 @@ type playerInstructionBeginTurn struct{}
 type playerInstructionDrawCard struct{}
 
 type playCard struct {
-	card ClanCard
+	card deck.ClanCard
 	loc  int
 }
 
-func player(id int, chans chanGroup, deck *ClanDeck, line *battleLine) {
-	var hand []ClanCard
+func player(id int, chans chanGroup, dk *deck.ClanDeck, line *battleLine) {
+	var hand []deck.ClanCard
 	for {
 		select {
 		case in := <-chans.toPlayer:
 			switch in.(type) {
 			case playerInstructionDrawCard:
-				draw, ok := deck.Draw()
+				draw, ok := dk.Draw()
 				if !ok {
 					log.Printf("No cards for Player %d to draw!\n", id)
 				} else {
@@ -350,22 +351,22 @@ func newChanGroup(id int) chanGroup {
 func Main(seed int64) {
 	rand.Seed(seed)
 
-	deck := New()
+	dk := deck.New()
 	line := newBattleline()
 	chans := []chanGroup{newChanGroup(0), newChanGroup(1)}
 
-	go player(0, chans[0], deck, line)
-	go player(1, chans[1], deck, line)
+	go player(0, chans[0], dk, line)
+	go player(1, chans[1], dk, line)
 
-	officiateGame(deck, line, chans)
+	officiateGame(dk, line, chans)
 }
 
 type historicMove struct {
 	id   int
-	card ClanCard
+	card deck.ClanCard
 }
 
-func officiateGame(deck *ClanDeck, line *battleLine, chans []chanGroup) {
+func officiateGame(deck *deck.ClanDeck, line *battleLine, chans []chanGroup) {
 	go server(deck, line)
 	log.Print("Begin!")
 	for i := 0; i < 6; i++ {
@@ -419,7 +420,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, line *battleLine) {
 	}
 }
 
-func server(deck *ClanDeck, line *battleLine) {
+func server(dk *deck.ClanDeck, line *battleLine) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "game-view", line)
 	}

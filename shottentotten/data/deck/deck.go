@@ -1,4 +1,4 @@
-package shottentotten
+package deck
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 var clans = []string{"a", "b", "c", "d", "e", "f"}
 
 type ClanCard struct {
-	rank int
-	clan string // "suit"
+	Rank int
+	Clan string // "suit"
 }
 
 func (c ClanCard) String() string {
-	return fmt.Sprintf("%d%s", c.rank, c.clan)
+	return fmt.Sprintf("%d%s", c.Rank, c.Clan)
 }
 
 type ClanDeck struct {
@@ -28,8 +28,8 @@ func New() *ClanDeck {
 	for _, c := range clans {
 		for r := 1; r <= 9; r++ {
 			cards = append(cards, ClanCard{
-				rank: r,
-				clan: c,
+				Rank: r,
+				Clan: c,
 			})
 		}
 	}
