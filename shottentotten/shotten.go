@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const updateInterval = 10 * time.Millisecond
+
 var clans = []string{"a", "b", "c", "d", "e", "f"}
 
 type clanCard struct {
@@ -74,6 +76,71 @@ func (cd *clanDeck) size() int {
 
 type cardSet []clanCard
 
+func (s cardSet) isFlush() bool {
+	colors := make(map[string]bool)
+	for _, c := range s {
+		colors[c.clan] = true
+	}
+	return len(colors) == 1
+}
+
+func (s cardSet) isRun() bool {
+	bins := make([]int, 9, 9)
+	for _, c := range s {
+		bins[c.rank] += 1
+	}
+
+	counter := 0
+	for i := 0; i < 9; i++ {
+		if bins[i] > 1 {
+			return false
+		}
+		if bins[i] == 1 {
+			counter++
+		} else {
+			counter = 0
+		}
+
+		if counter == 3 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s cardSet) highCard() int {
+	high := -1
+	for _, v := range s {
+		if v.rank > high {
+			high = v.rank
+		}
+	}
+
+	return high
+}
+
+func (s cardSet) isTriple() bool {
+	bins := make([]int, 9, 9)
+	for _, c := range s {
+		bins[c.rank] += 1
+	}
+
+	for i := 0; i < 9; i++ {
+		if bins[i] == 3 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s cardSet) sum() int {
+	total := 0
+	for _, v := range s {
+		total += v.rank
+	}
+	return total
+}
+
 func newCardSet() cardSet {
 	return make([]clanCard, 0, 3)
 }
@@ -87,6 +154,7 @@ const (
 )
 
 type stone struct {
+	// TODO Needs history as tie-breaker for, e.g., 3 6s vs 3 6s
 	cards [2]cardSet
 	winner
 	sync.RWMutex
@@ -126,6 +194,67 @@ func (s *stone) getWinnerStr() interface{} {
 	}
 }
 
+type handKind int
+
+const (
+	// TODO rename
+	sum handKind = iota
+	run
+	color
+	three
+	colorRun
+)
+
+type strength struct {
+	handKind
+	value int
+}
+
+func evaluateCards(set cardSet) strength {
+	flush := set.isFlush()
+	isRun := set.isRun()
+	triple := set.isTriple()
+	highCard := set.highCard()
+
+	switch {
+	case flush && isRun:
+		return strength{handKind: colorRun, value: highCard}
+	case triple:
+		return strength{handKind: three, value: highCard}
+	case flush:
+		return strength{handKind: color, value: highCard}
+	case isRun:
+		return strength{handKind: run, value: highCard}
+	default:
+		return strength{handKind: sum, value: set.sum()}
+	}
+}
+
+func (s *stone) updateWinner() {
+	s.RWMutex.Lock()
+	defer s.RWMutex.Unlock()
+	if s.winner != tbd {
+		return
+	}
+
+	if len(s.cards[0]) < 3 || len(s.cards[1]) < 3 {
+		return
+	}
+
+	l, r := evaluateCards(s.cards[0]), evaluateCards(s.cards[1])
+
+	switch {
+	case l.handKind > r.handKind:
+		s.winner = left
+	case l.handKind < r.handKind:
+		s.winner = right
+	case l.value > r.value:
+		s.winner = left
+	case l.value < r.value:
+		s.winner = right
+	}
+}
+
 type battleLine struct {
 	line []*stone
 	sync.RWMutex
@@ -162,6 +291,15 @@ func (l *battleLine) appendTo(i, side int, c clanCard) {
 	defer l.RWMutex.Unlock()
 
 	l.line[i].cards[side] = append(l.line[i].cards[side], c)
+}
+
+func (l *battleLine) updateStoneWinners() {
+	l.RWMutex.Lock()
+	defer l.RWMutex.Unlock()
+
+	for _, s := range l.line {
+		s.updateWinner()
+	}
 }
 
 func newBattleline() *battleLine {
@@ -305,13 +443,13 @@ func officiateGame(deck *clanDeck, line *battleLine, chans []chanGroup) {
 				}
 
 			default:
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(updateInterval)
 				fmt.Println(line.display())
+				line.updateStoneWinners()
+
 			}
 		}
 	}
-
-	// TODO officiate
 }
 
 var templates = template.Must(template.ParseFiles("shottentotten/game-view.html"))
