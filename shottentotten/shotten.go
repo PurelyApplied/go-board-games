@@ -24,7 +24,7 @@ func (c clanCard) String() string {
 
 type clanDeck struct {
 	cards []clanCard
-	lock  sync.Mutex
+	sync.RWMutex
 }
 
 func newClanDeck() *clanDeck {
@@ -40,13 +40,12 @@ func newClanDeck() *clanDeck {
 
 	return &clanDeck{
 		cards: cards,
-		lock:  sync.Mutex{},
 	}
 }
 
 func (cd *clanDeck) shuffle() {
-	cd.lock.Lock()
-	defer cd.lock.Unlock()
+	cd.RWMutex.Lock()
+	defer cd.RWMutex.Unlock()
 
 	rand.Shuffle(len(cd.cards), func(i, j int) {
 		cd.cards[i], cd.cards[j] = cd.cards[j], cd.cards[i]
@@ -54,8 +53,8 @@ func (cd *clanDeck) shuffle() {
 }
 
 func (cd *clanDeck) draw() (draw clanCard, ok bool) {
-	cd.lock.Lock()
-	defer cd.lock.Unlock()
+	cd.RWMutex.Lock()
+	defer cd.RWMutex.Unlock()
 
 	if len(cd.cards) == 0 {
 		return clanCard{}, false
@@ -67,8 +66,8 @@ func (cd *clanDeck) draw() (draw clanCard, ok bool) {
 }
 
 func (cd *clanDeck) size() int {
-	cd.lock.Lock()
-	defer cd.lock.Unlock()
+	cd.RWMutex.RLock()
+	defer cd.RWMutex.RUnlock()
 
 	return len(cd.cards)
 }
@@ -82,18 +81,18 @@ func displayStone(set [2]cardSet) string {
 
 type battleLine struct {
 	line [][2]cardSet
-	lock sync.Mutex
+	sync.RWMutex
 }
 
 func (l *battleLine) String() string {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.RWMutex.RLock()
+	defer l.RWMutex.RUnlock()
 	return fmt.Sprintf("%v", l.line)
 }
 
 func (l *battleLine) display() string {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.RWMutex.RLock()
+	defer l.RWMutex.RUnlock()
 
 	var stones []string
 	for _, s := range l.line {
@@ -103,8 +102,8 @@ func (l *battleLine) display() string {
 }
 
 func (l *battleLine) get() [][2]cardSet {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.RWMutex.RLock()
+	defer l.RWMutex.RUnlock()
 
 	cpy := make([][2]cardSet, 9, 9)
 	copy(cpy, l.line)
@@ -112,15 +111,14 @@ func (l *battleLine) get() [][2]cardSet {
 }
 
 func (l *battleLine) appendTo(i, side int, c clanCard) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.RWMutex.Lock()
+	defer l.RWMutex.Unlock()
 	l.line[i][side] = append(l.line[i][side], c)
 }
 
 func newBattleline() *battleLine {
 	line := battleLine{
 		line: make([][2]cardSet, 9, 9),
-		lock: sync.Mutex{},
 	}
 	return &line
 }
