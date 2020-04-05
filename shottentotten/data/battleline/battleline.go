@@ -1,4 +1,4 @@
-package shottentotten
+package battleline
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ func (s *CardSet) isRun() bool {
 	s.RWMutex.RLock()
 	defer s.RWMutex.RUnlock()
 
-	bins := make([]int, 9, 9)
+	bins := make([]int, 10, 10)
 	for _, c := range s.cards {
 		bins[c.Rank] += 1
 	}
@@ -69,7 +69,7 @@ func (s *CardSet) isTriple() bool {
 	s.RWMutex.RLock()
 	defer s.RWMutex.RUnlock()
 
-	bins := make([]int, 9, 9)
+	bins := make([]int, 10, 10)
 	for _, c := range s.cards {
 		bins[c.Rank] += 1
 	}
@@ -91,6 +91,20 @@ func (s *CardSet) sum() int {
 		total += v.Rank
 	}
 	return total
+}
+
+func (s *CardSet) play(c deck.ClanCard) {
+	s.RWMutex.Lock()
+	defer s.RWMutex.Unlock()
+
+	s.cards = append(s.cards, c)
+}
+
+func (s *CardSet) size() int {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
+	return len(s.cards)
 }
 
 func newCardSet() *CardSet {
@@ -208,59 +222,79 @@ func (s *Stone) updateWinner() {
 	}
 }
 
-type battleLine struct {
-	line []*Stone
+func (s *Stone) play(side int, c deck.ClanCard) {
+	s.RWMutex.Lock()
+	defer s.RWMutex.Unlock()
+
+	s.cards[side].play(c)
+
+}
+
+func (s *Stone) isOpen(side int) bool {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
+	return s.cards[side].size() < 3
+}
+
+type BattleLine struct {
+	stones []*Stone
 	sync.RWMutex
 }
 
-func (l *battleLine) String() string {
+func (l *BattleLine) String() string {
 	l.RWMutex.RLock()
 	defer l.RWMutex.RUnlock()
-	return fmt.Sprintf("%v", l.line)
+	return fmt.Sprintf("%v", l.stones)
 }
 
-func (l *battleLine) display() string {
+func (l *BattleLine) Display() string {
 	l.RWMutex.RLock()
 	defer l.RWMutex.RUnlock()
 
 	var stones []string
-	for _, s := range l.line {
+	for _, s := range l.stones {
 		stones = append(stones, s.Display())
 	}
 	return "Battle line:\n------------\n" + strings.Join(stones, "\n")
 }
 
-func (l *battleLine) get() []*Stone {
+func (l *BattleLine) GetOpenStones(side int) []int {
 	l.RWMutex.RLock()
 	defer l.RWMutex.RUnlock()
 
-	cpy := make([]*Stone, 9, 9)
-	copy(cpy, l.line)
-	return cpy
+	open := make([]int, 0, 5)
+
+	for i, s := range l.stones {
+		if s.isOpen(side) {
+			open = append(open, i)
+		}
+	}
+	return open
 }
 
-func (l *battleLine) appendTo(i, side int, c deck.ClanCard) {
+func (l *BattleLine) Play(i, side int, c deck.ClanCard) {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
 
-	l.line[i].cards[side].cards = append(l.line[i].cards[side].cards, c)
+	l.stones[i].play(side, c)
 }
 
-func (l *battleLine) updateStoneWinners() {
+func (l *BattleLine) UpdateStoneWinners() {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
 
-	for _, s := range l.line {
+	for _, s := range l.stones {
 		s.updateWinner()
 	}
 }
 
-func newBattleline() *battleLine {
-	line := battleLine{
-		line: make([]*Stone, 9, 9),
+func New() *BattleLine {
+	line := BattleLine{
+		stones: make([]*Stone, 9, 9),
 	}
 	for i := 0; i < 9; i++ {
-		line.line[i] = newStone()
+		line.stones[i] = newStone()
 	}
 	return &line
 }

@@ -2,6 +2,7 @@ package shottentotten
 
 import (
 	"fmt"
+	"go-board-games/shottentotten/data/battleline"
 	"go-board-games/shottentotten/data/deck"
 	"html/template"
 	"log"
@@ -20,7 +21,7 @@ type playCard struct {
 	loc  int
 }
 
-func player(id int, chans chanGroup, dk *deck.ClanDeck, line *battleLine) {
+func player(id int, chans chanGroup, dk *deck.ClanDeck, line *battleline.BattleLine) {
 	var hand []deck.ClanCard
 	for {
 		select {
@@ -42,14 +43,7 @@ func player(id int, chans chanGroup, dk *deck.ClanDeck, line *battleLine) {
 				}
 
 				// randomly select a card and a destination
-				linedata := line.get()
-				var openings []int
-				for i, stone := range linedata {
-					side := stone.cards[id].cards
-					if len(side) < 3 {
-						openings = append(openings, i)
-					}
-				}
+				openings := line.GetOpenStones(id)
 
 				iLoc := rand.Intn(len(openings))
 				loc := openings[iLoc]
@@ -92,7 +86,7 @@ func Main(seed int64) {
 	rand.Seed(seed)
 
 	dk := deck.New()
-	line := newBattleline()
+	line := battleline.New()
 	chans := []chanGroup{newChanGroup(0), newChanGroup(1)}
 
 	go player(0, chans[0], dk, line)
@@ -106,7 +100,7 @@ type historicMove struct {
 	card deck.ClanCard
 }
 
-func officiateGame(deck *deck.ClanDeck, line *battleLine, chans []chanGroup) {
+func officiateGame(deck *deck.ClanDeck, line *battleline.BattleLine, chans []chanGroup) {
 	go server(deck, line)
 	log.Print("Begin!")
 	for i := 0; i < 6; i++ {
@@ -127,7 +121,7 @@ func officiateGame(deck *deck.ClanDeck, line *battleLine, chans []chanGroup) {
 					// Add card to history
 					history = append(history, historicMove{id, instr.card})
 
-					line.appendTo(instr.loc, id, instr.card)
+					line.Play(instr.loc, id, instr.card)
 
 					// instruct to draw
 					chans[id].toPlayer <- playerInstructionDrawCard{}
@@ -143,8 +137,8 @@ func officiateGame(deck *deck.ClanDeck, line *battleLine, chans []chanGroup) {
 
 			default:
 				time.Sleep(updateInterval)
-				fmt.Println(line.display())
-				line.updateStoneWinners()
+				fmt.Println(line.Display())
+				line.UpdateStoneWinners()
 
 			}
 		}
@@ -153,14 +147,14 @@ func officiateGame(deck *deck.ClanDeck, line *battleLine, chans []chanGroup) {
 
 var templates = template.Must(template.ParseFiles("shottentotten/game-view.html"))
 
-func renderTemplate(w http.ResponseWriter, tmpl string, line *battleLine) {
-	err := templates.ExecuteTemplate(w, tmpl+".html", struct{ Display string }{line.display()})
+func renderTemplate(w http.ResponseWriter, tmpl string, line *battleline.BattleLine) {
+	err := templates.ExecuteTemplate(w, tmpl+".html", struct{ Display string }{line.Display()})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func server(dk *deck.ClanDeck, line *battleLine) {
+func server(dk *deck.ClanDeck, line *battleline.BattleLine) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "game-view", line)
 	}
