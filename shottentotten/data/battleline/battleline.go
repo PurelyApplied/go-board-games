@@ -153,9 +153,9 @@ func (s *Stone) getWinnerStr() interface{} {
 	case tbd:
 		return " | "
 	case left:
-		return " | "
+		return "<| "
 	case right:
-		return " | "
+		return " |>"
 	default:
 		log.Printf("E] Got unexpected winner at stone.")
 		return "?|?"
