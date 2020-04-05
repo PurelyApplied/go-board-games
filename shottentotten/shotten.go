@@ -74,19 +74,28 @@ func (cd *clanDeck) size() int {
 	return len(cd.cards)
 }
 
-type cardSet []clanCard
+type cardSet struct {
+	cards []clanCard
+	sync.RWMutex
+}
 
-func (s cardSet) isFlush() bool {
+func (s *cardSet) isFlush() bool {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
 	colors := make(map[string]bool)
-	for _, c := range s {
+	for _, c := range s.cards {
 		colors[c.clan] = true
 	}
 	return len(colors) == 1
 }
 
-func (s cardSet) isRun() bool {
+func (s *cardSet) isRun() bool {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
 	bins := make([]int, 9, 9)
-	for _, c := range s {
+	for _, c := range s.cards {
 		bins[c.rank] += 1
 	}
 
@@ -108,9 +117,12 @@ func (s cardSet) isRun() bool {
 	return false
 }
 
-func (s cardSet) highCard() int {
+func (s *cardSet) highCard() int {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
 	high := -1
-	for _, v := range s {
+	for _, v := range s.cards {
 		if v.rank > high {
 			high = v.rank
 		}
@@ -119,9 +131,12 @@ func (s cardSet) highCard() int {
 	return high
 }
 
-func (s cardSet) isTriple() bool {
+func (s *cardSet) isTriple() bool {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
 	bins := make([]int, 9, 9)
-	for _, c := range s {
+	for _, c := range s.cards {
 		bins[c.rank] += 1
 	}
 
@@ -133,16 +148,21 @@ func (s cardSet) isTriple() bool {
 	return false
 }
 
-func (s cardSet) sum() int {
+func (s *cardSet) sum() int {
+	s.RWMutex.RLock()
+	defer s.RWMutex.RUnlock()
+
 	total := 0
-	for _, v := range s {
+	for _, v := range s.cards {
 		total += v.rank
 	}
 	return total
 }
 
-func newCardSet() cardSet {
-	return make([]clanCard, 0, 3)
+func newCardSet() *cardSet {
+	return &cardSet{
+		cards: make([]clanCard, 0, 3),
+	}
 }
 
 type winner int
@@ -155,7 +175,7 @@ const (
 
 type stone struct {
 	// TODO Needs history as tie-breaker for, e.g., 3 6s vs 3 6s
-	cards [2]cardSet
+	cards [2]*cardSet
 	winner
 	sync.RWMutex
 }
@@ -173,7 +193,7 @@ func (s *stone) Display() string {
 
 	separator := s.getWinnerStr()
 
-	left, right := fmt.Sprintf("%v", s.cards[0]), fmt.Sprintf("%v", s.cards[1])
+	left, right := fmt.Sprintf("%v", s.cards[0].cards), fmt.Sprintf("%v", s.cards[1].cards)
 	return fmt.Sprintf("%15v%s%-15v", left, separator, right)
 }
 
@@ -210,7 +230,7 @@ type strength struct {
 	value int
 }
 
-func evaluateCards(set cardSet) strength {
+func evaluateCards(set *cardSet) strength {
 	flush := set.isFlush()
 	isRun := set.isRun()
 	triple := set.isTriple()
@@ -237,7 +257,7 @@ func (s *stone) updateWinner() {
 		return
 	}
 
-	if len(s.cards[0]) < 3 || len(s.cards[1]) < 3 {
+	if len(s.cards[0].cards) < 3 || len(s.cards[1].cards) < 3 {
 		return
 	}
 
@@ -290,7 +310,7 @@ func (l *battleLine) appendTo(i, side int, c clanCard) {
 	l.RWMutex.Lock()
 	defer l.RWMutex.Unlock()
 
-	l.line[i].cards[side] = append(l.line[i].cards[side], c)
+	l.line[i].cards[side].cards = append(l.line[i].cards[side].cards, c)
 }
 
 func (l *battleLine) updateStoneWinners() {
@@ -345,7 +365,7 @@ func player(id int, chans chanGroup, deck *clanDeck, line *battleLine) {
 				linedata := line.get()
 				var openings []int
 				for i, stone := range linedata {
-					side := stone.cards[id]
+					side := stone.cards[id].cards
 					if len(side) < 3 {
 						openings = append(openings, i)
 					}
